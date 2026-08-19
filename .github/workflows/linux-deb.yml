@@ -1,0 +1,113 @@
+name: build-linux-deb
+
+# Reproducible Linux (.deb) build for the MCP-enabled RustDesk fork.
+# Authored from a verified local build on Ubuntu 24.04. Includes fixes for gaps
+# in the upstream Linux build instructions (see docs/BUILD-LINUX.md).
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*-linux*'
+
+env:
+  RUST_VERSION: "1.75"
+  FLUTTER_VERSION: "3.24.5"
+  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"
+  CARGO_EXPAND_VERSION: "1.0.95"
+
+jobs:
+  build-linux-deb:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake curl gcc-multilib git g++ g++-multilib \
+            libayatana-appindicator3-dev libasound2-dev libc6-dev libclang-dev libunwind-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev libpulse-dev \
+            libva-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxdo-dev libxfixes-dev \
+            llvm-dev nasm ninja-build pkg-config wget libpam0g-dev \
+            libssl-dev
+          # NOTE: libssl-dev is missing from the upstream apt list because GitHub-hosted
+          # runners ship it preinstalled; a clean host needs it explicitly.
+
+      - name: Install Rust ${{ env.RUST_VERSION }} (with rustfmt)
+        uses: dtolnay/rust-toolchain@1.75.0
+        with:
+          components: rustfmt
+          # NOTE: flutter_rust_bridge codegen shells out to rustfmt; a minimal
+          # toolchain without it fails the "Generate Rust code" phase.
+
+      - name: Install Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - name: Setup vcpkg (pinned)
+        run: |
+          git clone https://github.com/microsoft/vcpkg "$HOME/vcpkg"
+          git -C "$HOME/vcpkg" checkout "${VCPKG_COMMIT_ID}"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> "$GITHUB_ENV"
+
+      - name: Install codec libraries via vcpkg (software codecs only)
+        run: |
+          # hwcodec is intentionally omitted for this build: mfx-dispatch:x64-linux
+          # fails to build and hardware H.264/H.265 is not needed for the MCP/terminal
+          # use case. Install only the software codec ports the `flutter` feature links.
+          "$VCPKG_ROOT/vcpkg" install --overlay-ports=res/vcpkg \
+            libvpx:x64-linux libyuv:x64-linux aom:x64-linux opus:x64-linux libjpeg-turbo:x64-linux
+
+      - name: Install bridge codegen tools
+        run: |
+          cargo install cargo-expand --version "${CARGO_EXPAND_VERSION}" --locked
+          cargo install flutter_rust_bridge_codegen --version "${FLUTTER_RUST_BRIDGE_VERSION}" --features uuid --locked
+
+      - name: Flutter pub get (must run before codegen)
+        run: (cd flutter && flutter pub get)
+        # NOTE: frb codegen runs ffigen, which needs flutter/.dart_tool/package_config.json.
+        # Running pub get after codegen (as the old build.py comment implies) fails ffigen.
+
+      - name: Generate flutter-rust bridge
+        run: |
+          flutter_rust_bridge_codegen \
+            --rust-input ./src/flutter_ffi.rs \
+            --dart-output ./flutter/lib/generated_bridge.dart \
+            --c-output ./flutter/macos/Runner/bridge_generated.h
+
+      - name: Build Rust library (features: flutter; no hwcodec)
+        run: cargo build --features flutter --lib --release
+
+      - name: ffigen bindgen refactor
+        run: |
+          sed -i 's/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g' \
+            flutter/lib/generated_bridge.dart
+
+      - name: Package .deb
+        run: python3 ./build.py --flutter --skip-cargo
+
+      - name: Compute checksum
+        run: sha256sum rustdesk-*.deb | tee rustdesk-linux-deb.sha256
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-mcp-linux-deb
+          path: |
+            rustdesk-*.deb
+            rustdesk-linux-deb.sha256
+
+      - name: Attach to release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            rustdesk-*.deb
+            rustdesk-linux-deb.sha256
