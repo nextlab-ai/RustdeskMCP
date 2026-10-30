@@ -14,6 +14,9 @@
 
 ## RustDeskMCP fork
 
+This fork now uses RustDesk **1.5.0**. For a native Arch Linux / EndeavourOS build
+and installation, see [docs/BUILD-ARCH.md](docs/BUILD-ARCH.md).
+
 This repository is a modified fork of the official [RustDesk](https://github.com/rustdesk/rustdesk) project and remains licensed under AGPL-3.0. It adds an embedded localhost MCP server, a separate `RustDeskMCP` app identity, and agent-oriented desktop and terminal control flows on top of the upstream RustDesk codebase.
 
 Chinese version of this fork overview: [docs/README-ZH.md](docs/README-ZH.md)
@@ -242,4 +245,3 @@ Please ensure that you run these commands from the root of the RustDesk reposito
 ![File Transfer](https://github.com/rustdesk/rustdesk/assets/28412477/39511ad3-aa9a-4f8c-8947-1cce286a46ad)
 
 ![TCP Tunneling](https://github.com/rustdesk/rustdesk/assets/28412477/78e8708f-e87e-4570-8373-1360033ea6c5)
-

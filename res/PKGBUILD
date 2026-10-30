@@ -1,13 +1,13 @@
 pkgname=rustdesk
-pkgver=1.4.6
-pkgrel=0
+pkgver=1.5.0
+pkgrel=1
 epoch=
-pkgdesc=""
+pkgdesc="RustDesk remote desktop with an embedded localhost MCP server"
 arch=('x86_64')
-url=""
+url="https://github.com/nextlab-ai/RustdeskMCP"
 license=('AGPL-3.0')
 groups=()
-depends=('gtk3' 'xdotool' 'libxcb' 'libxfixes' 'alsa-lib' 'libva' 'libappindicator-gtk3' 'pam' 'gst-plugins-base' 'gst-plugin-pipewire')
+depends=('gtk3' 'xdotool' 'libxcb' 'libxfixes' 'alsa-lib' 'libva' 'libappindicator-gtk3' 'pam' 'gst-plugins-base' 'gst-plugin-pipewire' 'libyuv' 'libvpx' 'aom' 'opus' 'libpulse' 'openssl')
 makedepends=()
 checkdepends=()
 optdepends=()
@@ -15,15 +15,15 @@ provides=()
 conflicts=()
 replaces=()
 backup=()
-options=()
+options=('!debug')
 install=pacman_install
 changelog=
 noextract=()
 md5sums=() #generate with 'makepkg -g'
 
 package() {
-  if [[ ${FLUTTER} ]]; then
-	  mkdir -p "${pkgdir}/usr/share/rustdesk" && cp -r ${HBB}/flutter/build/linux/x64/release/bundle/* -t "${pkgdir}/usr/share/rustdesk"
+  if [[ ${FLUTTER:-} ]]; then
+	  mkdir -p "${pkgdir}/usr/share/rustdesk" && cp -a "${HBB}/flutter/build/linux/x64/release/bundle/." "${pkgdir}/usr/share/rustdesk/"
   fi
   mkdir -p "${pkgdir}/usr/bin"
   pushd ${pkgdir} && ln -s /usr/share/rustdesk/rustdesk usr/bin/rustdesk && popd

@@ -85,6 +85,15 @@ pub extern "C" fn wire_session_start_with_displays(
 }
 
 #[no_mangle]
+pub extern "C" fn wire_session_get_cursor_shape(
+    port_: i64,
+    session_id: *mut wire_uint_8_list,
+    id: *mut wire_uint_8_list,
+) {
+    wire_session_get_cursor_shape_impl(port_, session_id, id)
+}
+
+#[no_mangle]
 pub extern "C" fn wire_session_get_remember(port_: i64, session_id: *mut wire_uint_8_list) {
     wire_session_get_remember_impl(port_, session_id)
 }
@@ -929,11 +938,6 @@ pub extern "C" fn wire_main_get_error(port_: i64) {
 }
 
 #[no_mangle]
-pub extern "C" fn wire_main_show_option(_key: *mut wire_uint_8_list) -> support::WireSyncReturn {
-    wire_main_show_option_impl(_key)
-}
-
-#[no_mangle]
 pub extern "C" fn wire_main_set_option(
     port_: i64,
     key: *mut wire_uint_8_list,
@@ -1054,6 +1058,15 @@ pub extern "C" fn wire_main_discover(port_: i64) {
 #[no_mangle]
 pub extern "C" fn wire_main_get_api_server(port_: i64) {
     wire_main_get_api_server_impl(port_)
+}
+
+#[no_mangle]
+pub extern "C" fn wire_main_deploy_device(
+    port_: i64,
+    token: *mut wire_uint_8_list,
+    id: *mut wire_uint_8_list,
+) {
+    wire_main_deploy_device_impl(port_, token, id)
 }
 
 #[no_mangle]
@@ -1708,6 +1721,11 @@ pub extern "C" fn wire_cm_close_connection(port_: i64, conn_id: i32) {
 }
 
 #[no_mangle]
+pub extern "C" fn wire_cm_close_connection_window(port_: i64, conn_id: i32) {
+    wire_cm_close_connection_window_impl(port_, conn_id)
+}
+
+#[no_mangle]
 pub extern "C" fn wire_cm_remove_disconnected_connection(port_: i64, conn_id: i32) {
     wire_cm_remove_disconnected_connection_impl(port_, conn_id)
 }
@@ -2029,97 +2047,6 @@ pub extern "C" fn wire_send_url_scheme(port_: i64, _url: *mut wire_uint_8_list) 
 }
 
 #[no_mangle]
-pub extern "C" fn wire_plugin_event(
-    port_: i64,
-    _id: *mut wire_uint_8_list,
-    _peer: *mut wire_uint_8_list,
-    _event: *mut wire_uint_8_list,
-) {
-    wire_plugin_event_impl(port_, _id, _peer, _event)
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_register_event_stream(port_: i64, _id: *mut wire_uint_8_list) {
-    wire_plugin_register_event_stream_impl(port_, _id)
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_get_session_option(
-    _id: *mut wire_uint_8_list,
-    _peer: *mut wire_uint_8_list,
-    _key: *mut wire_uint_8_list,
-) -> support::WireSyncReturn {
-    wire_plugin_get_session_option_impl(_id, _peer, _key)
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_set_session_option(
-    port_: i64,
-    _id: *mut wire_uint_8_list,
-    _peer: *mut wire_uint_8_list,
-    _key: *mut wire_uint_8_list,
-    _value: *mut wire_uint_8_list,
-) {
-    wire_plugin_set_session_option_impl(port_, _id, _peer, _key, _value)
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_get_shared_option(
-    _id: *mut wire_uint_8_list,
-    _key: *mut wire_uint_8_list,
-) -> support::WireSyncReturn {
-    wire_plugin_get_shared_option_impl(_id, _key)
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_set_shared_option(
-    port_: i64,
-    _id: *mut wire_uint_8_list,
-    _key: *mut wire_uint_8_list,
-    _value: *mut wire_uint_8_list,
-) {
-    wire_plugin_set_shared_option_impl(port_, _id, _key, _value)
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_reload(port_: i64, _id: *mut wire_uint_8_list) {
-    wire_plugin_reload_impl(port_, _id)
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_enable(
-    _id: *mut wire_uint_8_list,
-    _v: bool,
-) -> support::WireSyncReturn {
-    wire_plugin_enable_impl(_id, _v)
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_is_enabled(_id: *mut wire_uint_8_list) -> support::WireSyncReturn {
-    wire_plugin_is_enabled_impl(_id)
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_feature_is_enabled() -> support::WireSyncReturn {
-    wire_plugin_feature_is_enabled_impl()
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_sync_ui(port_: i64, _sync_to: *mut wire_uint_8_list) {
-    wire_plugin_sync_ui_impl(port_, _sync_to)
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_list_reload(port_: i64) {
-    wire_plugin_list_reload_impl(port_)
-}
-
-#[no_mangle]
-pub extern "C" fn wire_plugin_install(port_: i64, _id: *mut wire_uint_8_list, _b: bool) {
-    wire_plugin_install_impl(port_, _id, _b)
-}
-
-#[no_mangle]
 pub extern "C" fn wire_is_support_multi_ui_session(
     version: *mut wire_uint_8_list,
 ) -> support::WireSyncReturn {
@@ -2244,6 +2171,16 @@ pub extern "C" fn wire_main_set_common(
     _value: *mut wire_uint_8_list,
 ) {
     wire_main_set_common_impl(port_, _key, _value)
+}
+
+#[no_mangle]
+pub extern "C" fn wire_session_set_common(
+    port_: i64,
+    session_id: *mut wire_uint_8_list,
+    key: *mut wire_uint_8_list,
+    value: *mut wire_uint_8_list,
+) {
+    wire_session_set_common_impl(port_, session_id, key, value)
 }
 
 #[no_mangle]

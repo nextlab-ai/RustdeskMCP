@@ -10,11 +10,11 @@ use crate::{
     },
 };
 use encoding_rs::GBK;
+use base::message_proto::{terminal_response, ControlKey, KeyEvent, KeyboardMode, TerminalResponse};
 use hbb_common::{
     base64::{engine::general_purpose::STANDARD, Engine as _},
     config::LocalConfig,
     log,
-    message_proto::{terminal_response, ControlKey, KeyEvent, KeyboardMode, TerminalResponse},
     rendezvous_proto::ConnType,
 };
 use serde_json::{json, Map, Value};
@@ -1961,5 +1961,67 @@ impl ProtocolError {
             code,
             message: message.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initialize_reports_the_built_version() {
+        let response = handle_message(json!({
+            "jsonrpc": "2.0", "id": 7, "method": "initialize"
+        }))
+        .unwrap();
+        assert_eq!(response["id"], 7);
+        assert_eq!(response["result"]["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(response["result"]["protocolVersion"], MCP_PROTOCOL_VERSION);
+    }
+
+    #[test]
+    fn local_input_lock_allows_only_agent_bypass_and_clears() {
+        let peer = "mcp-upgrade-lock-test";
+        clear_local_input_lock_for_peer(peer);
+        assert!(!should_drop_user_input(peer));
+        set_local_input_lock_for_peer(peer, true);
+        assert!(should_drop_user_input(peer));
+        with_agent_input_bypass(|| {
+            assert!(!should_drop_user_input(peer));
+            with_agent_input_bypass(|| assert!(!should_drop_user_input(peer)));
+            assert!(!should_drop_user_input(peer));
+        });
+        assert!(should_drop_user_input(peer));
+        clear_local_input_lock_for_peer(peer);
+        assert!(!should_drop_user_input(peer));
+    }
+
+    #[test]
+    fn frame_cache_preserves_display_and_pixels() {
+        let session = SessionID::new_v4();
+        let mut image = scrap::ImageRgb::new(scrap::ImageFormat::ARGB, 1);
+        image.w = 1;
+        image.h = 1;
+        image.raw = vec![10, 20, 30, 255];
+        record_frame(&[session], 2, &image);
+        let frame = cached_frame(session, 2).unwrap();
+        assert_eq!(frame.display, 2);
+        assert_eq!((frame.width, frame.height), (1, 1));
+        assert_eq!(frame.rgba, image.raw);
+        assert!(cached_frame(session, 0).is_none());
+    }
+
+    #[test]
+    fn terminal_data_from_upstream_proto_reaches_cache() {
+        let session = SessionID::new_v4();
+        let mut data = base::message_proto::TerminalData::new();
+        data.terminal_id = 3;
+        data.data = "MCP 검증\n".as_bytes().to_vec().into();
+        let mut response = TerminalResponse::new();
+        response.set_data(data);
+        record_terminal_response(&[session], &response);
+        assert_eq!(cached_terminal_output(session, 3, 100), "MCP 검증\n");
+        clear_terminal_output(session, 3);
+        assert_eq!(cached_terminal_output(session, 3, 100), "");
     }
 }
