@@ -61,3 +61,6 @@ flutter/web/
 /AGENTS.md
 /CLAUDE.md
 /GEMINI.md
+/res/pkg/
+/res/src/
+/res/*.pkg.tar.*

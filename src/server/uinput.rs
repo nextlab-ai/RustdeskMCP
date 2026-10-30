@@ -130,7 +130,16 @@ pub mod client {
         }
 
         pub fn send_refresh(&mut self) -> ResultType<()> {
-            self.send(Data::Mouse(DataMouse::Refresh))
+            self.rt
+                .block_on(self.conn.send(&Data::Mouse(DataMouse::Refresh)))?;
+            // Wait for the service to confirm it recreated the device, so a
+            // failed refresh is distinguishable from a good one.
+            match self.rt.block_on(self.conn.next_timeout(IPC_REQUEST_TIMEOUT)) {
+                Ok(Some(Data::Empty)) => Ok(()),
+                Ok(Some(resp)) => bail!("unexpected uinput mouse refresh response: {:?}", &resp),
+                Ok(None) => bail!("uinput mouse refresh failed, connection closed"),
+                Err(e) => bail!("uinput mouse refresh timeout {}, {}", IPC_REQUEST_TIMEOUT, e),
+            }
         }
     }
 
@@ -185,9 +194,13 @@ pub mod client {
 pub mod service {
     use super::*;
     use hbb_common::lazy_static;
+    #[cfg(target_os = "linux")]
+    use parity_tokio_ipc::Connection as RawIpcConnection;
     use scrap::wayland::{
         pipewire::RDP_SESSION_INFO, remote_desktop_portal::OrgFreedesktopPortalRemoteDesktop,
     };
+    #[cfg(target_os = "linux")]
+    use std::os::unix::io::AsRawFd;
     use std::{collections::HashMap, sync::Mutex};
 
     lazy_static::lazy_static! {
@@ -602,7 +615,10 @@ pub mod service {
             }
             DataKeyboard::KeyDown(enigo::Key::Raw(code)) => {
                 if *code < 8 {
-                    log::error!("Invalid Raw keycode {} (must be >= 8 due to XKB offset), skipping", code);
+                    log::error!(
+                        "Invalid Raw keycode {} (must be >= 8 due to XKB offset), skipping",
+                        code
+                    );
                 } else {
                     let down_event = InputEvent::new(EventType::KEY, *code - 8, 1);
                     allow_err!(keyboard.emit(&[down_event]));
@@ -610,7 +626,10 @@ pub mod service {
             }
             DataKeyboard::KeyUp(enigo::Key::Raw(code)) => {
                 if *code < 8 {
-                    log::error!("Invalid Raw keycode {} (must be >= 8 due to XKB offset), skipping", code);
+                    log::error!(
+                        "Invalid Raw keycode {} (must be >= 8 due to XKB offset), skipping",
+                        code
+                    );
                 } else {
                     let up_event = InputEvent::new(EventType::KEY, *code - 8, 0);
                     allow_err!(keyboard.emit(&[up_event]));
@@ -841,9 +860,10 @@ pub mod service {
                                 match data {
                                     Data::Mouse(data) => {
                                         if let DataMouse::Refresh = data {
-                                            let resolution = RESOLUTION.lock().unwrap();
-                                            let rng_x = resolution.0.clone();
-                                            let rng_y = resolution.1.clone();
+                                            let (rng_x, rng_y) = {
+                                                let resolution = RESOLUTION.lock().unwrap();
+                                                (resolution.0.clone(), resolution.1.clone())
+                                            };
                                             log::info!(
                                                 "Refresh uinput mouce with rng_x: ({}, {}), rng_y: ({}, {})",
                                                 rng_x.0,
@@ -851,11 +871,19 @@ pub mod service {
                                                 rng_y.0,
                                                 rng_y.1
                                             );
-                                            mouse = match mouce::UInputMouseManager::new(rng_x, rng_y) {
-                                                Ok(mouse) => mouse,
+                                            match mouce::UInputMouseManager::new(rng_x, rng_y) {
+                                                Ok(m) => {
+                                                    mouse = m;
+                                                    // Ack: device adopted the new range.
+                                                    allow_err!(stream.send(&Data::Empty).await);
+                                                }
                                                 Err(e) => {
-                                                    log::error!("Failed to create mouse, {}", e);
-                                                    return;
+                                                    // Keep the current device; withhold the ack
+                                                    // so the client times out and retries.
+                                                    log::error!(
+                                                        "Failed to recreate uinput mouse, keeping current: {}",
+                                                        e
+                                                    );
                                                 }
                                             }
                                         } else {
@@ -909,6 +937,35 @@ pub mod service {
         });
     }
 
+    #[cfg(target_os = "linux")]
+    fn authorize_uinput_peer(postfix: &str, stream: &RawIpcConnection) -> bool {
+        if !hbb_common::config::is_service_ipc_postfix(postfix) {
+            return true;
+        }
+        let peer_uid = ipc::peer_uid_from_fd(stream.as_raw_fd());
+        let active_uid = crate::platform::linux::get_active_userid_fresh()
+            .trim()
+            .parse::<u32>()
+            .ok();
+        let authorized =
+            peer_uid.is_some_and(|uid| ipc::is_allowed_service_peer_uid(uid, active_uid));
+        if !authorized {
+            crate::ipc::log_rejected_uinput_connection(postfix, peer_uid, active_uid);
+            return false;
+        }
+        if let Err(err) =
+            ipc::ensure_peer_executable_matches_current_by_fd(stream.as_raw_fd(), postfix)
+        {
+            log::warn!(
+                "Rejected connection on protected uinput ipc channel due to executable mismatch: postfix={}, err={}",
+                postfix,
+                err
+            );
+            return false;
+        }
+        true
+    }
+
     /// Start uinput service.
     async fn start_service<F: FnOnce(ipc::Connection) + Copy>(postfix: &str, handler: F) {
         match new_listener(postfix).await {
@@ -916,6 +973,10 @@ pub mod service {
                 while let Some(result) = incoming.next().await {
                     match result {
                         Ok(stream) => {
+                            #[cfg(target_os = "linux")]
+                            if !authorize_uinput_peer(postfix, &stream) {
+                                continue;
+                            }
                             log::debug!("Got new connection of uinput ipc {}", postfix);
                             handler(Connection::new(stream));
                         }
@@ -1008,7 +1069,13 @@ mod mouce {
     pub const BTN_TASK: c_int = 0x117;
     const SYN_REPORT: c_int = 0x00;
     const EV_SYN: c_int = 0x00;
-    const BUS_USB: c_ushort = 0x03;
+    // libinput's evdev_tag_external_mouse() tags any BUS_USB/BUS_BLUETOOTH
+    // pointer as an external mouse, which makes desktop environments'
+    // "disable touchpad when an external mouse is present" setting suspend
+    // the real touchpad whenever this virtual device is created, even
+    // though nothing is physically plugged in. BUS_VIRTUAL correctly
+    // identifies this as the software-only device it is.
+    const BUS_VIRTUAL: c_ushort = 0x06;
 
     /// uinput types
     #[repr(C)]
@@ -1147,7 +1214,7 @@ mod mouce {
 
             let mut usetup = UInputSetup {
                 id: InputId {
-                    bustype: BUS_USB,
+                    bustype: BUS_VIRTUAL,
                     // Random vendor and product
                     vendor: 0x2222,
                     product: 0x3333,

@@ -10,7 +10,7 @@ on:
       - 'v*-linux*'
 
 env:
-  RUST_VERSION: "1.75"
+  RUST_VERSION: "1.88"
   FLUTTER_VERSION: "3.24.5"
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
   FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"
@@ -38,7 +38,7 @@ jobs:
           # runners ship it preinstalled; a clean host needs it explicitly.
 
       - name: Install Rust ${{ env.RUST_VERSION }} (with rustfmt)
-        uses: dtolnay/rust-toolchain@1.75.0
+        uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt
           # NOTE: flutter_rust_bridge codegen shells out to rustfmt; a minimal

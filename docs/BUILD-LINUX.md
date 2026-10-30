@@ -6,7 +6,10 @@ gating, wired unconditionally via `pub mod agent_bridge;` in `src/lib.rs`), so i
 builds and runs on Linux unchanged. This document captures a verified Ubuntu 24.04
 build, including four gaps not covered by the upstream Linux instructions.
 
-Verified: Ubuntu 24.04, Rust 1.75, Flutter 3.24.5. The MCP HTTP server was
+The original 1.4.6 build was verified on Ubuntu 24.04, Rust 1.75, Flutter 3.24.5.
+The updated 1.5.0 dependency lockfile requires Rust 1.88 or newer; use the
+toolchain below. Arch Linux / EndeavourOS instructions are in [BUILD-ARCH.md](BUILD-ARCH.md).
+The original MCP HTTP server was
 confirmed live on `http://127.0.0.1:59940/mcp` (`initialize` + `tools/list`
 returning all 13 tools) from the resulting binary.
 
@@ -34,8 +37,8 @@ sudo apt-get install -y \
   libva-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxdo-dev libxfixes-dev \
   llvm-dev nasm ninja-build pkg-config wget libpam0g-dev libssl-dev   # libssl-dev = fix (1)
 
-# Rust 1.75 WITH rustfmt  -- fix (2)
-rustup toolchain install 1.75.0 --profile minimal --component rustfmt
+# Rust 1.88 WITH rustfmt  -- fix (2), updated dependency minimum
+rustup toolchain install 1.88.0 --profile minimal --component rustfmt
 
 # Flutter 3.24.5 (stable)
 # e.g. download flutter_linux_3.24.5-stable.tar.xz and add flutter/bin to PATH

@@ -216,6 +216,24 @@ fn wire_session_start_with_displays_impl(
         },
     )
 }
+fn wire_session_get_cursor_shape_impl(
+    port_: MessagePort,
+    session_id: impl Wire2Api<uuid::Uuid> + UnwindSafe,
+    id: impl Wire2Api<String> + UnwindSafe,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, Option<CursorShape>>(
+        WrapInfo {
+            debug_name: "session_get_cursor_shape",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || {
+            let api_session_id = session_id.wire2api();
+            let api_id = id.wire2api();
+            move |task_callback| Ok(session_get_cursor_shape(api_session_id, api_id))
+        },
+    )
+}
 fn wire_session_get_remember_impl(
     port_: MessagePort,
     session_id: impl Wire2Api<uuid::Uuid> + UnwindSafe,
@@ -2101,19 +2119,6 @@ fn wire_main_get_error_impl(port_: MessagePort) {
         move || move |task_callback| Ok(main_get_error()),
     )
 }
-fn wire_main_show_option_impl(_key: impl Wire2Api<String> + UnwindSafe) -> support::WireSyncReturn {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync(
-        WrapInfo {
-            debug_name: "main_show_option",
-            port: None,
-            mode: FfiCallMode::Sync,
-        },
-        move || {
-            let api__key = _key.wire2api();
-            Ok(main_show_option(api__key))
-        },
-    )
-}
 fn wire_main_set_option_impl(
     port_: MessagePort,
     key: impl Wire2Api<String> + UnwindSafe,
@@ -2367,6 +2372,24 @@ fn wire_main_get_api_server_impl(port_: MessagePort) {
             mode: FfiCallMode::Normal,
         },
         move || move |task_callback| Ok(main_get_api_server()),
+    )
+}
+fn wire_main_deploy_device_impl(
+    port_: MessagePort,
+    token: impl Wire2Api<String> + UnwindSafe,
+    id: impl Wire2Api<String> + UnwindSafe,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, String>(
+        WrapInfo {
+            debug_name: "main_deploy_device",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || {
+            let api_token = token.wire2api();
+            let api_id = id.wire2api();
+            move |task_callback| Ok(main_deploy_device(api_token, api_id))
+        },
     )
 }
 fn wire_main_resolve_avatar_url_impl(
@@ -3860,6 +3883,22 @@ fn wire_cm_close_connection_impl(port_: MessagePort, conn_id: impl Wire2Api<i32>
         },
     )
 }
+fn wire_cm_close_connection_window_impl(
+    port_: MessagePort,
+    conn_id: impl Wire2Api<i32> + UnwindSafe,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, ()>(
+        WrapInfo {
+            debug_name: "cm_close_connection_window",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || {
+            let api_conn_id = conn_id.wire2api();
+            move |task_callback| Ok(cm_close_connection_window(api_conn_id))
+        },
+    )
+}
 fn wire_cm_remove_disconnected_connection_impl(
     port_: MessagePort,
     conn_id: impl Wire2Api<i32> + UnwindSafe,
@@ -4582,223 +4621,6 @@ fn wire_send_url_scheme_impl(port_: MessagePort, _url: impl Wire2Api<String> + U
         },
     )
 }
-fn wire_plugin_event_impl(
-    port_: MessagePort,
-    _id: impl Wire2Api<String> + UnwindSafe,
-    _peer: impl Wire2Api<String> + UnwindSafe,
-    _event: impl Wire2Api<Vec<u8>> + UnwindSafe,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, ()>(
-        WrapInfo {
-            debug_name: "plugin_event",
-            port: Some(port_),
-            mode: FfiCallMode::Normal,
-        },
-        move || {
-            let api__id = _id.wire2api();
-            let api__peer = _peer.wire2api();
-            let api__event = _event.wire2api();
-            move |task_callback| Ok(plugin_event(api__id, api__peer, api__event))
-        },
-    )
-}
-fn wire_plugin_register_event_stream_impl(
-    port_: MessagePort,
-    _id: impl Wire2Api<String> + UnwindSafe,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, ()>(
-        WrapInfo {
-            debug_name: "plugin_register_event_stream",
-            port: Some(port_),
-            mode: FfiCallMode::Stream,
-        },
-        move || {
-            let api__id = _id.wire2api();
-            move |task_callback| {
-                Ok(plugin_register_event_stream(
-                    api__id,
-                    task_callback.stream_sink::<_, EventToUI>(),
-                ))
-            }
-        },
-    )
-}
-fn wire_plugin_get_session_option_impl(
-    _id: impl Wire2Api<String> + UnwindSafe,
-    _peer: impl Wire2Api<String> + UnwindSafe,
-    _key: impl Wire2Api<String> + UnwindSafe,
-) -> support::WireSyncReturn {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync(
-        WrapInfo {
-            debug_name: "plugin_get_session_option",
-            port: None,
-            mode: FfiCallMode::Sync,
-        },
-        move || {
-            let api__id = _id.wire2api();
-            let api__peer = _peer.wire2api();
-            let api__key = _key.wire2api();
-            Ok(plugin_get_session_option(api__id, api__peer, api__key))
-        },
-    )
-}
-fn wire_plugin_set_session_option_impl(
-    port_: MessagePort,
-    _id: impl Wire2Api<String> + UnwindSafe,
-    _peer: impl Wire2Api<String> + UnwindSafe,
-    _key: impl Wire2Api<String> + UnwindSafe,
-    _value: impl Wire2Api<String> + UnwindSafe,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, ()>(
-        WrapInfo {
-            debug_name: "plugin_set_session_option",
-            port: Some(port_),
-            mode: FfiCallMode::Normal,
-        },
-        move || {
-            let api__id = _id.wire2api();
-            let api__peer = _peer.wire2api();
-            let api__key = _key.wire2api();
-            let api__value = _value.wire2api();
-            move |task_callback| {
-                Ok(plugin_set_session_option(
-                    api__id, api__peer, api__key, api__value,
-                ))
-            }
-        },
-    )
-}
-fn wire_plugin_get_shared_option_impl(
-    _id: impl Wire2Api<String> + UnwindSafe,
-    _key: impl Wire2Api<String> + UnwindSafe,
-) -> support::WireSyncReturn {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync(
-        WrapInfo {
-            debug_name: "plugin_get_shared_option",
-            port: None,
-            mode: FfiCallMode::Sync,
-        },
-        move || {
-            let api__id = _id.wire2api();
-            let api__key = _key.wire2api();
-            Ok(plugin_get_shared_option(api__id, api__key))
-        },
-    )
-}
-fn wire_plugin_set_shared_option_impl(
-    port_: MessagePort,
-    _id: impl Wire2Api<String> + UnwindSafe,
-    _key: impl Wire2Api<String> + UnwindSafe,
-    _value: impl Wire2Api<String> + UnwindSafe,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, ()>(
-        WrapInfo {
-            debug_name: "plugin_set_shared_option",
-            port: Some(port_),
-            mode: FfiCallMode::Normal,
-        },
-        move || {
-            let api__id = _id.wire2api();
-            let api__key = _key.wire2api();
-            let api__value = _value.wire2api();
-            move |task_callback| Ok(plugin_set_shared_option(api__id, api__key, api__value))
-        },
-    )
-}
-fn wire_plugin_reload_impl(port_: MessagePort, _id: impl Wire2Api<String> + UnwindSafe) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, ()>(
-        WrapInfo {
-            debug_name: "plugin_reload",
-            port: Some(port_),
-            mode: FfiCallMode::Normal,
-        },
-        move || {
-            let api__id = _id.wire2api();
-            move |task_callback| Ok(plugin_reload(api__id))
-        },
-    )
-}
-fn wire_plugin_enable_impl(
-    _id: impl Wire2Api<String> + UnwindSafe,
-    _v: impl Wire2Api<bool> + UnwindSafe,
-) -> support::WireSyncReturn {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync(
-        WrapInfo {
-            debug_name: "plugin_enable",
-            port: None,
-            mode: FfiCallMode::Sync,
-        },
-        move || {
-            let api__id = _id.wire2api();
-            let api__v = _v.wire2api();
-            Ok(plugin_enable(api__id, api__v))
-        },
-    )
-}
-fn wire_plugin_is_enabled_impl(_id: impl Wire2Api<String> + UnwindSafe) -> support::WireSyncReturn {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync(
-        WrapInfo {
-            debug_name: "plugin_is_enabled",
-            port: None,
-            mode: FfiCallMode::Sync,
-        },
-        move || {
-            let api__id = _id.wire2api();
-            Ok(plugin_is_enabled(api__id))
-        },
-    )
-}
-fn wire_plugin_feature_is_enabled_impl() -> support::WireSyncReturn {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync(
-        WrapInfo {
-            debug_name: "plugin_feature_is_enabled",
-            port: None,
-            mode: FfiCallMode::Sync,
-        },
-        move || Ok(plugin_feature_is_enabled()),
-    )
-}
-fn wire_plugin_sync_ui_impl(port_: MessagePort, _sync_to: impl Wire2Api<String> + UnwindSafe) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, ()>(
-        WrapInfo {
-            debug_name: "plugin_sync_ui",
-            port: Some(port_),
-            mode: FfiCallMode::Normal,
-        },
-        move || {
-            let api__sync_to = _sync_to.wire2api();
-            move |task_callback| Ok(plugin_sync_ui(api__sync_to))
-        },
-    )
-}
-fn wire_plugin_list_reload_impl(port_: MessagePort) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, ()>(
-        WrapInfo {
-            debug_name: "plugin_list_reload",
-            port: Some(port_),
-            mode: FfiCallMode::Normal,
-        },
-        move || move |task_callback| Ok(plugin_list_reload()),
-    )
-}
-fn wire_plugin_install_impl(
-    port_: MessagePort,
-    _id: impl Wire2Api<String> + UnwindSafe,
-    _b: impl Wire2Api<bool> + UnwindSafe,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, ()>(
-        WrapInfo {
-            debug_name: "plugin_install",
-            port: Some(port_),
-            mode: FfiCallMode::Normal,
-        },
-        move || {
-            let api__id = _id.wire2api();
-            let api__b = _b.wire2api();
-            move |task_callback| Ok(plugin_install(api__id, api__b))
-        },
-    )
-}
 fn wire_is_support_multi_ui_session_impl(
     version: impl Wire2Api<String> + UnwindSafe,
 ) -> support::WireSyncReturn {
@@ -5085,6 +4907,26 @@ fn wire_main_set_common_impl(
         },
     )
 }
+fn wire_session_set_common_impl(
+    port_: MessagePort,
+    session_id: impl Wire2Api<uuid::Uuid> + UnwindSafe,
+    key: impl Wire2Api<String> + UnwindSafe,
+    value: impl Wire2Api<String> + UnwindSafe,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, ()>(
+        WrapInfo {
+            debug_name: "session_set_common",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || {
+            let api_session_id = session_id.wire2api();
+            let api_key = key.wire2api();
+            let api_value = value.wire2api();
+            move |task_callback| Ok(session_set_common(api_session_id, api_key, api_value))
+        },
+    )
+}
 fn wire_session_get_common_sync_impl(
     session_id: impl Wire2Api<uuid::Uuid> + UnwindSafe,
     key: impl Wire2Api<String> + UnwindSafe,
@@ -5181,6 +5023,25 @@ impl Wire2Api<usize> for usize {
 }
 // Section: impl IntoDart
 
+impl support::IntoDart for CursorShape {
+    fn into_dart(self) -> support::DartAbi {
+        vec![
+            self.hotx.into_into_dart().into_dart(),
+            self.hoty.into_into_dart().into_dart(),
+            self.width.into_into_dart().into_dart(),
+            self.height.into_into_dart().into_dart(),
+            self.colors.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl support::IntoDartExceptPrimitive for CursorShape {}
+impl rust2dart::IntoIntoDart<CursorShape> for CursorShape {
+    fn into_into_dart(self) -> Self {
+        self
+    }
+}
+
 impl support::IntoDart for EventToUI {
     fn into_dart(self) -> support::DartAbi {
         match self {
@@ -5190,6 +5051,22 @@ impl support::IntoDart for EventToUI {
                 2.into_dart(),
                 field0.into_into_dart().into_dart(),
                 field1.into_into_dart().into_dart(),
+            ],
+            Self::Cursor {
+                id,
+                hotx,
+                hoty,
+                width,
+                height,
+                colors,
+            } => vec![
+                3.into_dart(),
+                id.into_into_dart().into_dart(),
+                hotx.into_into_dart().into_dart(),
+                hoty.into_into_dart().into_dart(),
+                width.into_into_dart().into_dart(),
+                height.into_into_dart().into_dart(),
+                colors.into_into_dart().into_dart(),
             ],
         }
         .into_dart()

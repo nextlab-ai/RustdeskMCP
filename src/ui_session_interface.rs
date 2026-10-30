@@ -7,16 +7,16 @@ use crate::{
     ui_interface::use_texture_render,
 };
 use async_trait::async_trait;
-use bytes::Bytes;
 #[cfg(all(target_os = "windows", not(feature = "flutter")))]
-use hbb_common::config::keys;
+use base::config::keys;
 #[cfg(not(feature = "flutter"))]
-use hbb_common::fs;
+use base::fs;
+use base::message_proto::*;
+use bytes::Bytes;
 use hbb_common::{
     allow_err,
     config::{Config, LocalConfig, PeerConfig},
     get_version_number, log,
-    message_proto::*,
     rendezvous_proto::ConnType,
     tokio::{
         self,
@@ -51,6 +51,10 @@ use crate::common::GrabState;
 use crate::keyboard;
 use crate::{client::Data, client::Interface};
 
+#[cfg(any(target_os = "android", target_os = "ios", test))]
+#[path = "platform/mobile_wheel.rs"]
+mod mobile_wheel;
+
 const CHANGE_RESOLUTION_VALID_TIMEOUT_SECS: u64 = 15;
 
 #[derive(Clone, Default)]
@@ -72,6 +76,10 @@ pub struct Session<T: InvokeUiSession> {
     pub reconnect_count: Arc<AtomicUsize>,
     pub last_audit_note: Arc<Mutex<String>>,
     pub audit_guid: Arc<Mutex<String>>,
+    // Every cursor shape as the peer sent it, compressed, by the id the UI knows it by. The
+    // peer sends a shape once, and a window asks for it whenever it has to draw it again.
+    #[cfg(feature = "flutter")]
+    pub cursor_shapes: Arc<RwLock<HashMap<u64, CursorData>>>,
 }
 
 #[derive(Clone)]
@@ -128,6 +136,10 @@ impl ConnectionRoundState {
             true
         }
     }
+
+    pub fn is_connected(&self) -> bool {
+        matches!(self.state, ConnectionState::Connected)
+    }
 }
 
 impl Default for ConnectionRoundState {
@@ -175,13 +187,16 @@ impl SessionPermissionConfig {
         *self.server_clipboard_enabled.read().unwrap()
             && *self.server_keyboard_enabled.read().unwrap()
             && !self.lc.read().unwrap().disable_clipboard.v
+            && !self.lc.read().unwrap().view_only.v
     }
 
     #[cfg(feature = "unix-file-copy-paste")]
     pub fn is_file_clipboard_required(&self) -> bool {
+        let lc = self.lc.read().unwrap();
         *self.server_keyboard_enabled.read().unwrap()
             && *self.server_file_transfer_enabled.read().unwrap()
-            && self.lc.read().unwrap().enable_file_copy_paste.v
+            && lc.enable_file_copy_paste.v
+            && !lc.view_only.v
     }
 }
 
@@ -415,13 +430,16 @@ impl<T: InvokeUiSession> Session<T> {
         *self.server_clipboard_enabled.read().unwrap()
             && *self.server_keyboard_enabled.read().unwrap()
             && !self.lc.read().unwrap().disable_clipboard.v
+            && !self.lc.read().unwrap().view_only.v
     }
 
     #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
     pub fn is_file_clipboard_required(&self) -> bool {
+        let lc = self.lc.read().unwrap();
         *self.server_keyboard_enabled.read().unwrap()
             && *self.server_file_transfer_enabled.read().unwrap()
-            && self.lc.read().unwrap().enable_file_copy_paste.v
+            && lc.enable_file_copy_paste.v
+            && !lc.view_only.v
     }
 
     #[cfg(feature = "flutter")]
@@ -558,19 +576,9 @@ impl<T: InvokeUiSession> Session<T> {
 
     pub fn restart_remote_device(&self) {
         let mut lc = self.lc.write().unwrap();
-        lc.restarting_remote_device = true;
+        lc.mark_restarting_remote_device();
         let msg = lc.restart_remote_device();
         self.send(Data::Message(msg));
-    }
-
-    #[cfg(all(feature = "flutter", feature = "plugin_framework"))]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn send_plugin_request(&self, request: PluginRequest) {
-        let mut misc = Misc::new();
-        misc.set_plugin_request(request);
-        let mut msg_out = Message::new();
-        msg_out.set_misc(misc);
-        self.send(Data::Message(msg_out));
     }
 
     pub fn get_audit_server(&self, typ: String) -> String {
@@ -654,7 +662,7 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn is_restarting_remote_device(&self) -> bool {
-        self.lc.read().unwrap().restarting_remote_device
+        self.lc.read().unwrap().is_restarting_remote_device()
     }
 
     #[inline]
@@ -680,6 +688,7 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn input_os_password(&self, pass: String, activate: bool) {
+        #[cfg(all(feature = "flutter", not(any(target_os = "android", target_os = "ios"))))]
         if crate::agent_bridge::should_drop_user_input(&self.peer_id()) {
             return;
         }
@@ -770,6 +779,7 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn send_key_event(&self, evt: &KeyEvent) {
+        #[cfg(all(feature = "flutter", not(any(target_os = "android", target_os = "ios"))))]
         if crate::agent_bridge::should_drop_user_input(&self.peer_id()) {
             return;
         }
@@ -884,12 +894,14 @@ impl<T: InvokeUiSession> Session<T> {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub fn enter(&self, keyboard_mode: String) {
-        keyboard::client::change_grab_status(GrabState::Run, &keyboard_mode);
+        let session_id = self.lc.read().unwrap().session_id as u128;
+        keyboard::client::change_grab_status(GrabState::Run, &keyboard_mode, session_id);
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub fn leave(&self, keyboard_mode: String) {
-        keyboard::client::change_grab_status(GrabState::Wait, &keyboard_mode);
+        let session_id = self.lc.read().unwrap().session_id as u128;
+        keyboard::client::change_grab_status(GrabState::Wait, &keyboard_mode, session_id);
     }
 
     // flutter only TODO new input
@@ -915,6 +927,7 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn input_string(&self, value: &str) {
+        #[cfg(all(feature = "flutter", not(any(target_os = "android", target_os = "ios"))))]
         if crate::agent_bridge::should_drop_user_input(&self.peer_id()) {
             return;
         }
@@ -1237,6 +1250,7 @@ impl<T: InvokeUiSession> Session<T> {
         shift: bool,
         command: bool,
     ) {
+        #[cfg(all(feature = "flutter", not(any(target_os = "android", target_os = "ios"))))]
         if crate::agent_bridge::should_drop_user_input(&self.peer_id()) {
             return;
         }
@@ -1266,6 +1280,12 @@ impl<T: InvokeUiSession> Session<T> {
         let event_type = mask & MOUSE_TYPE_MASK;
         let (x, y) = if event_type == MOUSE_TYPE_WHEEL || event_type == MOUSE_TYPE_TRACKPAD {
             self.get_scroll_xy((x, y))
+        } else {
+            (x, y)
+        };
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        let (x, y) = if event_type == MOUSE_TYPE_WHEEL || event_type == MOUSE_TYPE_TRACKPAD {
+            mobile_wheel::mobile_wheel_delta((x, y), &self.lc.read().unwrap().reverse_mouse_wheel)
         } else {
             (x, y)
         };
@@ -1329,7 +1349,13 @@ impl<T: InvokeUiSession> Session<T> {
 
         // override only if true
         if true == force_relay {
-            self.lc.write().unwrap().force_relay = true;
+            let mut lc = self.lc.write().unwrap();
+            lc.force_relay = true;
+            // An explicit retry-via-relay is a decision about this peer, not transport
+            // necessity: Relay-only ICE for this round like any force-always-relay session,
+            // and it is the one kind of relay that belongs in the peer's saved config.
+            lc.policy_relay = true;
+            lc.peer_relay = true;
         }
         self.lc.write().unwrap().peer_info = None;
         self.reconnect_count.fetch_add(1, Ordering::SeqCst);
@@ -1441,6 +1467,15 @@ impl<T: InvokeUiSession> Session<T> {
         self.send(Data::Close);
     }
 
+    pub fn continue_insecure_connection(&self, continue_insecure: bool) {
+        let data = if continue_insecure {
+            Data::ContinueInsecureConnection
+        } else {
+            Data::RejectInsecureConnection
+        };
+        self.send(data);
+    }
+
     fn try_auto_start_job_str(is_reconnected: bool, job_str: &str) -> Option<String> {
         if is_reconnected {
             let job_str = job_str.trim();
@@ -1507,10 +1542,11 @@ impl<T: InvokeUiSession> Session<T> {
         self.send(Data::ElevateWithLogon(username, password));
     }
 
-    #[cfg(any(target_os = "ios"))]
+    #[cfg(any(target_os = "android", target_os = "ios", not(feature = "flutter")))]
     pub fn switch_sides(&self) {}
 
-    #[cfg(not(any(target_os = "ios")))]
+    #[cfg(feature = "flutter")]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[tokio::main(flavor = "current_thread")]
     pub async fn switch_sides(&self) {
         match crate::ipc::connect(1000, "").await {
@@ -1693,7 +1729,7 @@ impl<T: InvokeUiSession> Session<T> {
         let to = std::env::temp_dir().join(format!("rustdesk_printer_{id}"));
         self.send(Data::SendFiles((
             id,
-            hbb_common::fs::JobType::Printer,
+            base::fs::JobType::Printer,
             path,
             to.to_string_lossy().to_string(),
             0,
@@ -1841,10 +1877,12 @@ impl<T: InvokeUiSession> Interface for Session<T> {
                 self.msgbox("error", "Error", msg, "");
                 return;
             }
-            self.try_change_init_resolution(pi.current_display);
-            let p = self.lc.read().unwrap().should_auto_login();
-            if !p.is_empty() {
-                input_os_password(p, true, self.clone());
+            if !self.is_view_camera() {
+                self.try_change_init_resolution(pi.current_display);
+                let p = self.lc.read().unwrap().should_auto_login();
+                if !p.is_empty() {
+                    input_os_password(p, true, self.clone());
+                }
             }
             let current = &pi.displays[pi.current_display as usize];
             self.set_display(
@@ -1899,8 +1937,8 @@ impl<T: InvokeUiSession> Interface for Session<T> {
         }
     }
 
-    async fn handle_hash(&self, pass: &str, hash: Hash, peer: &mut Stream) {
-        handle_hash(self.lc.clone(), pass, hash, self, peer).await;
+    async fn handle_hash(&self, pass: &str, hash: Hash, peer: &mut Stream) -> bool {
+        handle_hash(self.lc.clone(), pass, hash, self, peer).await
     }
 
     async fn handle_login_from_ui(
@@ -1933,7 +1971,7 @@ impl<T: InvokeUiSession> Interface for Session<T> {
         }
     }
 
-    fn swap_modifier_mouse(&self, msg: &mut hbb_common::protos::message::MouseEvent) {
+    fn swap_modifier_mouse(&self, msg: &mut base::protos::message::MouseEvent) {
         let allow_swap_key = self.get_toggle_option("allow_swap_key".to_string());
         if allow_swap_key {
             msg.modifiers = msg
@@ -1975,6 +2013,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
     let key = crate::get_key(false).await;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if handler.is_port_forward() {
+        handler.lc.write().unwrap().port_forward_mux = crate::port_forward::mux_enabled();
         if handler.is_rdp() {
             let port = handler
                 .get_option("rdp_port".to_owned())

@@ -1,0 +1,9 @@
+prefix=/usr
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: libyuv
+Description: Arch Linux system libyuv (upstream does not ship a pkg-config file)
+Version: 0.0.0
+Libs: -L${libdir} -lyuv
+Cflags: -I${includedir}
